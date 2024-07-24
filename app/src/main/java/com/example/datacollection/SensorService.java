@@ -12,6 +12,8 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Build;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.IBinder;
 import android.util.Log;
 
@@ -25,9 +27,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 public class SensorService extends Service implements SensorEventListener {
 
@@ -40,15 +39,20 @@ public class SensorService extends Service implements SensorEventListener {
     private Sensor gyroscopeVectorSensor;
 
     private List<Map<String, Object>> sensorDataList = new ArrayList<>();
-    private String username;
-    private String userType;
+    private String userId;
+    private int age;
 
-    private long lastTimestamp = -1;
+    private HandlerThread sensorThread;
+    private Handler sensorHandler;
 
     @SuppressLint("ForegroundServiceType")
     @Override
     public void onCreate() {
         super.onCreate();
+
+        sensorThread = new HandlerThread("SensorThread");
+        sensorThread.start();
+        sensorHandler = new Handler(sensorThread.getLooper());
 
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         linearAccelerationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION);
@@ -62,21 +66,21 @@ public class SensorService extends Service implements SensorEventListener {
         NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Sensor Recording")
                 .setContentText("Recording sensor data...")
-                .setSmallIcon(com.google.firebase.database.collection.R.drawable.common_google_signin_btn_icon_light_normal)
+                .setSmallIcon(android.R.drawable.ic_menu_compass)
                 .setContentIntent(pendingIntent);
 
         startForeground(1, notificationBuilder.build());
 
-        sensorManager.registerListener(this, linearAccelerationSensor, SensorManager.SENSOR_DELAY_NORMAL);
-        sensorManager.registerListener(this, rotationVectorSensor, SensorManager.SENSOR_DELAY_NORMAL);
-        sensorManager.registerListener(this, gyroscopeVectorSensor, SensorManager.SENSOR_DELAY_NORMAL);
+        sensorManager.registerListener(this, linearAccelerationSensor, SensorManager.SENSOR_DELAY_NORMAL, sensorHandler);
+        sensorManager.registerListener(this, rotationVectorSensor, SensorManager.SENSOR_DELAY_NORMAL, sensorHandler);
+        sensorManager.registerListener(this, gyroscopeVectorSensor, SensorManager.SENSOR_DELAY_NORMAL, sensorHandler);
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        username = intent.getStringExtra("username");
-        userType = intent.getStringExtra("userType");
-        Log.d(TAG, "Service started with username: " + username + " and userType: " + userType);
+        userId = intent.getStringExtra("userId");
+        age = intent.getIntExtra("age", -1);
+        Log.d(TAG, "Service started with userId: " + userId + " and age: " + age);
         return START_STICKY;
     }
 
@@ -86,6 +90,8 @@ public class SensorService extends Service implements SensorEventListener {
         sensorManager.unregisterListener(this);
         Log.d(TAG, "Service destroyed, sensor listeners unregistered");
         sendSensorDataToFirestore();
+
+        sensorThread.quitSafely();
     }
 
     @Nullable
@@ -96,40 +102,37 @@ public class SensorService extends Service implements SensorEventListener {
 
     @Override
     public void onSensorChanged(SensorEvent event) {
+        long timestamp = new Date().getTime();
         float[] values = event.values.clone();
-        long timestamp = event.timestamp;
-        if (lastTimestamp == -1 || timestamp - lastTimestamp >= 1000000000) { // 1 second
-            lastTimestamp = timestamp;
-            if (!sensorDataList.isEmpty()) {
-                sendSensorDataToFirestore();
-                sensorDataList.clear();
-            }
-        }
-
         Map<String, Object> sensorData = new HashMap<>();
         sensorData.put("timestamp", timestamp);
-        sensorData.put("username", username);
-        sensorData.put("userType", userType);
+        sensorData.put("userId", userId);
+        sensorData.put("age", age);
+
         switch (event.sensor.getType()) {
             case Sensor.TYPE_LINEAR_ACCELERATION:
                 sensorData.put("sensor", "Linear Acceleration");
                 sensorData.put("x", values[0]);
                 sensorData.put("y", values[1]);
                 sensorData.put("z", values[2]);
+                Log.d(TAG, "Linear Acceleration Sensor Data: " + values[0] + ", " + values[1] + ", " + values[2]);
                 break;
             case Sensor.TYPE_ROTATION_VECTOR:
                 sensorData.put("sensor", "Rotation Vector");
                 sensorData.put("x", values[0]);
                 sensorData.put("y", values[1]);
                 sensorData.put("z", values[2]);
+                Log.d(TAG, "Rotation Vector Sensor Data: " + values[0] + ", " + values[1] + ", " + values[2]);
                 break;
             case Sensor.TYPE_GYROSCOPE:
                 sensorData.put("sensor", "Gyroscope");
                 sensorData.put("x", values[0]);
                 sensorData.put("y", values[1]);
                 sensorData.put("z", values[2]);
+                Log.d(TAG, "Gyroscope Sensor Data: " + values[0] + ", " + values[1] + ", " + values[2]);
                 break;
         }
+
         sensorDataList.add(sensorData);
     }
 
@@ -142,40 +145,16 @@ public class SensorService extends Service implements SensorEventListener {
         if (sensorDataList.isEmpty()) return;
 
         FirebaseFirestore db = FirebaseFirestore.getInstance();
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-
-        executor.submit(() -> {
-            Map<String, Object> batchData = new HashMap<>();
-            batchData.put("timestamp", sensorDataList.get(0).get("timestamp"));
-            batchData.put("username", sensorDataList.get(0).get("username"));
-            batchData.put("userType", sensorDataList.get(0).get("userType"));
-
-            for (Map<String, Object> sensorData : sensorDataList) {
-                String sensorType = (String) sensorData.get("sensor");
-                batchData.put(sensorType + "_x", sensorData.get("x"));
-                batchData.put(sensorType + "_y", sensorData.get("y"));
-                batchData.put(sensorType + "_z", sensorData.get("z"));
-            }
-
-            db.collection("sensor_data")
-                    .add(batchData)
+        Log.d(TAG, "Sending data to Firestore collection: " + userId);
+        for (Map<String, Object> sensorData : sensorDataList) {
+            db.collection(userId)
+                    .add(sensorData)
                     .addOnSuccessListener(documentReference -> {
                         Log.d(TAG, "Data sent to Firestore successfully");
                     })
                     .addOnFailureListener(e -> {
                         Log.e(TAG, "Failed to send data to Firestore", e);
                     });
-
-        });
-
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
         }
     }
 

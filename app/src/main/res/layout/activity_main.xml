@@ -24,49 +24,15 @@
         app:layout_constraintTop_toTopOf="parent" />
 
     <EditText
-        android:id="@+id/usernameEditText"
+        android:id="@+id/ageEditText"
         android:layout_width="0dp"
-        android:layout_height="48dp"
-        android:layout_marginTop="24dp"
-        android:hint="Enter Username"
-        android:textSize="18sp"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
+        android:layout_height="wrap_content"
+        android:hint="Enter your age"
+        android:inputType="number"
+        android:layout_marginTop="16dp"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toBottomOf="@id/titleTextView" />
-
-    <RadioGroup
-        android:id="@+id/userTypeGroup"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
-        android:orientation="horizontal"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/usernameEditText">
-
-        <RadioButton
-            android:id="@+id/sokidRadioButton"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:text="0..7"
-            android:padding="12dp" />
-
-        <RadioButton
-            android:id="@+id/teenRadioButton"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:text="7..12"
-            android:padding="12dp" />
-
-        <RadioButton
-            android:id="@+id/adultRadioButton"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:text="Adult"
-            android:padding="12dp" />
-    </RadioGroup>
 
     <Button
         android:id="@+id/startButton"
@@ -76,16 +42,17 @@
         android:text="Start Recording"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/userTypeGroup" />
-
+        app:layout_constraintTop_toBottomOf="@id/ageEditText" />
     <Button
         android:id="@+id/stopButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:text="Stop Recording"
+        android:enabled="false"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toBottomOf="@id/startButton" />
+
 
 </androidx.constraintlayout.widget.ConstraintLayout>
